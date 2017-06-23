@@ -5,12 +5,14 @@
 import * as msRest from "../../ms-rest/lib/msRest";
 
 export abstract class CredentialsBase {
-  public abstract getToken(): string;
+  // TODO: need a constructor here that does common things.
 
-  public signRequest(webResource: msRest.WebResource): Promise<msRest.WebResource> {
-    const token = this.getToken();
+  public async abstract getToken(): Promise<any>; // TODO: should this be a string?
+
+  public async signRequest(webResource: msRest.WebResource): Promise<msRest.WebResource> {
+    const token = await this.getToken();
     const headerConstants = msRest.Constants.HeaderConstants;
-    webResource.headers[headerConstants.AUTHORIZATION] = `${headerConstants.AUTHORIZATION_SCHEME} ${token}`;
+    webResource.headers[headerConstants.AUTHORIZATION] = `${token.tokenType} ${token.accessToken}`;
     return Promise.resolve(webResource);
   }
 }

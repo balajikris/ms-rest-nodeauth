@@ -7,6 +7,7 @@ import { EnvironmentConstants } from "./EnvironmentConstants";
 export class AzureEnvironment {
 
   public static Default = EnvironmentConstants.Default as AzureEnvironment;
+  public readonly validateAuthority = true;
 
   private constructor(
     public readonly name: string,
