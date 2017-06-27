@@ -3,38 +3,26 @@
 
 "use strict";
 import { TokenCredentialsBase } from "./TokenCredentialsBase";
-import * as adal from "adal-node/*";
 import { AzureEnvironment } from "./AzureEnvironment";
 import { TokenAudience } from "./TokenAudience";
 
 export class UserTokenCredentials extends TokenCredentialsBase {
 
-  private readonly tokenCache: any;
-  private readonly isGraphContext: boolean;
-  private readonly authContext: any;
+  private readonly username: string;
+  private readonly password: string;
 
   public constructor(
-    private readonly clientId: string,
-    private readonly domain: string,
-    private readonly username: string,
-    private readonly password: string,
-    private readonly tokenAudience?: TokenAudience,
-    private readonly environment: AzureEnvironment = AzureEnvironment.Default) {
+    clientId: string,
+    domain: string,
+    username: string,
+    password: string,
+    tokenAudience?: TokenAudience,
+    environment?: AzureEnvironment) {
 
-    super();
+    super(clientId, domain, tokenAudience, environment);
 
-    if (this.tokenAudience === TokenAudience.graph) {
-      this.isGraphContext = true;
-
-      if (this.domain.toLowerCase() === "common") {
-        throw new Error(`${"If the tokenAudience is specified as \"graph\" then \"domain\" cannot be defaulted to \"commmon\" tenant.\
-          It must be the actual tenant (preferrably a string in a guid format)."}`);
-      }
-    }
-
-    this.tokenCache = new adal.MemoryCache();
-    const authorityUrl = this.environment.activeDirectoryEndpointUrl + this.domain;
-    this.authContext = new adal.AuthenticationContext(authorityUrl, this.environment.validateAuthority, this.tokenCache);
+    this.username = username;
+    this.password = password;
   }
 
   /**
@@ -45,15 +33,11 @@ export class UserTokenCredentials extends TokenCredentialsBase {
    */
   public async getToken(): Promise<any> {
     try {
-      return this.getTokenFromCache();
+      return this.getTokenFromCache(this.username);
     } catch (error) {
 
       const self = this;
-
-      // TODO: extract this repeated code into a helper.
-      const resource = this.isGraphContext
-        ? this.environment.activeDirectoryGraphResourceId
-        : this.environment.activeDirectoryResourceId;
+      const resource = this.getActiveDirectoryResourceId();
 
       return new Promise((resolve, reject) => {
         self.authContext.acquireTokenWithUsernamePassword(resource, self.username, self.password, self.clientId,
@@ -65,23 +49,5 @@ export class UserTokenCredentials extends TokenCredentialsBase {
           });
       });
     }
-  }
-
-  // TODO: move to base class, also requires moving common fields/props down to base.
-  private getTokenFromCache(): Promise<any> {
-
-    const self = this;
-    const resource = self.isGraphContext
-      ? this.environment.activeDirectoryGraphResourceId
-      : this.environment.activeDirectoryResourceId;
-
-    return new Promise((resolve, reject) => {
-      self.authContext.acquireToken(resource, self.username, self.clientId, (error: any, tokenResponse: any) => {
-        if (error) {
-          return reject(error);
-        }
-        return resolve(tokenResponse);
-      });
-    });
   }
 }
