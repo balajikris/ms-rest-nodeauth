@@ -2,12 +2,13 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 "use strict";
-import { TokenCredentialsBase } from "./TokenCredentialsBase";
 import * as adal from "adal-node/*";
+import { TokenCredentialsBase } from "./TokenCredentialsBase";
 import { AzureEnvironment } from "./AzureEnvironment";
 import { TokenAudience } from "./TokenAudience";
+import { AuthConstants } from "./AuthConstants";
 
-export class UserTokenCredentials extends TokenCredentialsBase {
+export class ApplicationTokenCredentials extends TokenCredentialsBase {
 
   private readonly tokenCache: any;
   private readonly isGraphContext: boolean;
@@ -16,10 +17,9 @@ export class UserTokenCredentials extends TokenCredentialsBase {
   public constructor(
     private readonly clientId: string,
     private readonly domain: string,
-    private readonly username: string,
-    private readonly password: string,
+    private readonly secret: string,
     private readonly tokenAudience?: TokenAudience,
-    private readonly environment: AzureEnvironment = AzureEnvironment.Default) {
+    private readonly environment = AzureEnvironment.Default) {
 
     super();
 
@@ -37,18 +37,15 @@ export class UserTokenCredentials extends TokenCredentialsBase {
     this.authContext = new adal.AuthenticationContext(authorityUrl, this.environment.validateAuthority, this.tokenCache);
   }
 
-  /**
-   * Tries to get the token from cache initially. If that is unsuccessful then it tries to get the token from ADAL.
-   * @returns {Promise<object>}
-   * {object} [tokenResponse] The tokenResponse (tokenType and accessToken are the two important properties).
-   * @memberof UserTokenCredentials
-   */
-  public async getToken(): Promise<any> {
+  // TODO: The only difference between this and UserTokenCreds is what adal function we invoke
+  // share the implementation by taking what adal-func to call as an argument -- implement getToken(func) in base class.
+  public getToken(): Promise<any> {
     try {
       return this.getTokenFromCache();
     } catch (error) {
-
-      const self = this;
+      if (error.message.startsWith(AuthConstants.SDK_INTERNAL_ERROR)) {
+        return Promise.reject(error);
+      }
 
       // TODO: extract this repeated code into a helper.
       const resource = this.isGraphContext
@@ -56,7 +53,7 @@ export class UserTokenCredentials extends TokenCredentialsBase {
         : this.environment.activeDirectoryResourceId;
 
       return new Promise((resolve, reject) => {
-        self.authContext.acquireTokenWithUsernamePassword(resource, self.username, self.password, self.clientId,
+        this.authContext.acquireTokenWithClientCredentials(resource, this.clientId, this.secret,
           (error: any, tokenResponse: any) => {
             if (error) {
               return reject(error);
@@ -69,18 +66,44 @@ export class UserTokenCredentials extends TokenCredentialsBase {
 
   // TODO: move to base class, also requires moving common fields/props down to base.
   private getTokenFromCache(): Promise<any> {
-
     const self = this;
+
     const resource = self.isGraphContext
       ? this.environment.activeDirectoryGraphResourceId
       : this.environment.activeDirectoryResourceId;
 
+
     return new Promise((resolve, reject) => {
-      self.authContext.acquireToken(resource, self.username, self.clientId, (error: any, tokenResponse: any) => {
+      this.authContext.acquireToken(resource, undefined, self.clientId, (error: any, tokenResponse: any) => {
+        if (error) {
+          // Remove the stale token from the tokencache. ADAL gives the same error message "Entry not found in cache."
+          // for entry not being present in the cache and for accessToken being expired in the cache. We do not want the token cache
+          // to contain the expired token, we clean it up here.
+          return self.removeInvalidItemsFromCache({ _clientId: self.clientId })
+            .then(() => reject(error))
+            .catch((reason: any) => reject(new Error(AuthConstants.SDK_INTERNAL_ERROR + " : "
+              + "critical failure while removing expired token for service principal from token cache"
+              + reason.message)));
+        }
+
+        return resolve(tokenResponse);
+      });
+    });
+  }
+
+  private removeInvalidItemsFromCache(query: object): Promise<boolean> {
+    const self = this;
+    return new Promise((resolve, reject) => {
+      self.tokenCache.find(query, (error: any, entries: any) => {
         if (error) {
           return reject(error);
         }
-        return resolve(tokenResponse);
+
+        if (entries && entries.length > 0) {
+          return resolve(self.tokenCache.remove(entries, () => resolve(true)));
+        } else {
+          return resolve(true);
+        }
       });
     });
   }

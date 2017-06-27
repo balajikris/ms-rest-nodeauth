@@ -3,6 +3,7 @@
 
 "use strict";
 
+// TODO: Make this a static readonly property of a class
 export const EnvironmentConstants = {
   Default: {
     name: "Azure",

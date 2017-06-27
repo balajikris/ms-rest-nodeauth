@@ -2,17 +2,16 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 "use strict";
-import * as msRest from "../../ms-rest/lib/msRest";
+import { Constants as MSRestConstants, WebResource } from "../../ms-rest/lib/msRest";
 
-export abstract class CredentialsBase {
+export abstract class TokenCredentialsBase {
   // TODO: need a constructor here that does common things.
 
   public async abstract getToken(): Promise<any>; // TODO: should this be a string?
 
-  public async signRequest(webResource: msRest.WebResource): Promise<msRest.WebResource> {
+  public async signRequest(webResource: WebResource): Promise<WebResource> {
     const token = await this.getToken();
-    const headerConstants = msRest.Constants.HeaderConstants;
-    webResource.headers[headerConstants.AUTHORIZATION] = `${token.tokenType} ${token.accessToken}`;
+    webResource.headers[MSRestConstants.HeaderConstants.AUTHORIZATION] = `${token.tokenType} ${token.accessToken}`;
     return Promise.resolve(webResource);
   }
 }
